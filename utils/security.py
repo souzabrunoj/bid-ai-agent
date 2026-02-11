@@ -116,10 +116,18 @@ class FileValidator:
         try:
             # Resolve to absolute path
             resolved_path = file_path.resolve()
+            
+            # Allow temporary directories (for Streamlit uploads, etc.)
+            import tempfile
+            temp_dir = Path(tempfile.gettempdir()).resolve()
+            
+            # Check if path is within base directory OR temporary directory
             base_resolved = self.base_directory.resolve()
             
-            # Check if path is within base directory
-            if not str(resolved_path).startswith(str(base_resolved)):
+            is_in_base = str(resolved_path).startswith(str(base_resolved))
+            is_in_temp = str(resolved_path).startswith(str(temp_dir))
+            
+            if not (is_in_base or is_in_temp):
                 raise SecurityValidationError(
                     f"Path traversal attempt detected: {file_path}"
                 )
