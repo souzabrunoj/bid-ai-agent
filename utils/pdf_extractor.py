@@ -147,30 +147,52 @@ class PDFExtractor:
             
             logger.info(f"Using OCR for: {file_path.name}")
             
-            # Convert PDF pages to images
-            images = convert_from_path(file_path)
+            # Convert PDF pages to images with specific DPI
+            try:
+                images = convert_from_path(
+                    file_path,
+                    dpi=300,  # Higher DPI for better OCR
+                    fmt='png',
+                    thread_count=2
+                )
+                logger.info(f"Converted {len(images)} pages to images")
+            except Exception as e:
+                logger.error(f"pdf2image conversion failed: {e}")
+                raise PDFExtractionError(f"Failed to convert PDF to images: {e}")
             
             text_content = []
             for page_num, image in enumerate(images, start=1):
                 try:
-                    # Perform OCR on the image
+                    # Perform OCR on the image with Portuguese language
                     page_text = pytesseract.image_to_string(
                         image,
-                        lang=self.ocr_language
+                        lang=self.ocr_language,
+                        config='--psm 6'  # Assume uniform block of text
                     )
+                    logger.debug(f"Page {page_num} OCR: {len(page_text)} chars")
+                    
                     if page_text.strip():
                         text_content.append(f"--- Page {page_num} ---\n{page_text}")
+                    else:
+                        logger.warning(f"Page {page_num} produced no text")
+                        
                 except Exception as e:
                     logger.warning(f"OCR failed for page {page_num}: {e}")
                     continue
             
-            return "\n\n".join(text_content)
+            result = "\n\n".join(text_content)
+            logger.info(f"OCR complete: {len(result)} total characters from {len(images)} pages")
             
-        except ImportError:
+            return result
+            
+        except ImportError as e:
             raise PDFExtractionError(
-                "pdf2image is required for OCR. Install with: pip install pdf2image"
+                f"OCR dependency missing: {e}\n"
+                "Install with: pip install pdf2image\n"
+                "Also requires poppler: brew install poppler (macOS)"
             )
         except Exception as e:
+            logger.error(f"OCR extraction error: {e}")
             raise PDFExtractionError(f"OCR extraction failed: {e}")
     
     def extract_text(self, file_path: Path, force_ocr: bool = False) -> Dict[str, Any]:
@@ -212,7 +234,7 @@ class PDFExtractor:
                 text = self.extract_text_from_pdf(file_path)
                 
                 # Check if we got meaningful content
-                if text.strip() and len(text.strip()) > 100:
+                if text.strip() and len(text.strip()) > 50:
                     result['text'] = text
                     result['method'] = 'regular'
                     result['success'] = True
@@ -295,7 +317,9 @@ def extract_pdf_text(file_path: Path, enable_ocr: bool = True) -> str:
     extractor = PDFExtractor(enable_ocr=enable_ocr)
     result = extractor.extract_text(file_path)
     
-    if not result['success']:
-        raise PDFExtractionError("Failed to extract meaningful text from PDF")
+    if not result['success'] or not result['text'].strip():
+        # Return empty string instead of raising error
+        logger.warning(f"No text extracted from {file_path.name}")
+        return ""
     
     return extractor.sanitize_text(result['text'])

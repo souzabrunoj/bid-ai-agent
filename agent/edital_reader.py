@@ -13,6 +13,12 @@ import json
 from models import get_llm, PromptTemplates, LLMError
 from utils import extract_pdf_text, PDFExtractionError, validate_pdf_file, SecurityValidationError
 
+try:
+    from training.examples_loader import get_examples_loader
+    TRAINING_AVAILABLE = True
+except ImportError:
+    TRAINING_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -164,8 +170,23 @@ class EditalReader:
         try:
             logger.info("Analyzing edital with LLM...")
             
-            # Create prompt
+            # Create base prompt
             prompt = PromptTemplates.extract_bid_requirements(edital_text)
+            
+            # Add few-shot examples if available
+            if TRAINING_AVAILABLE:
+                try:
+                    examples_loader = get_examples_loader()
+                    few_shot_prompt = examples_loader.create_few_shot_prompt(edital_text, num_examples=2)
+                    if few_shot_prompt:
+                        # Insert examples before the edital
+                        prompt = prompt.replace(
+                            "Bid Notice:",
+                            f"{few_shot_prompt}\n\nBid Notice:"
+                        )
+                        logger.info("Added few-shot examples to prompt")
+                except Exception as e:
+                    logger.warning(f"Failed to load training examples: {e}")
             
             # Generate analysis
             result = self.llm.generate_json(
@@ -215,42 +236,62 @@ class EditalReader:
         
         requirements = []
         
-        # Common document patterns in Brazilian editais
+        # Common document patterns in Brazilian editais with detailed descriptions
         document_patterns = {
-            'habilitacao_juridica': [
-                'contrato social', 'ata de assembleia', 'registro comercial',
-                'inscrição comercial', 'cnpj', 'documento de constituição'
-            ],
-            'regularidade_fiscal': [
-                'certidão negativa', 'certidão de regularidade fiscal',
-                'certidão de regularidade da fazenda', 'regularidade fgts',
-                'certidão trabalhista', 'cnd', 'certidão federal',
-                'certidão estadual', 'certidão municipal'
-            ],
-            'qualificacao_tecnica': [
-                'atestado de capacidade técnica', 'certidão de acervo técnico',
-                'registro profissional', 'comprovação de aptidão',
-                'experiência anterior', 'certidão cat'
-            ],
-            'qualificacao_economica': [
-                'balanço patrimonial', 'demonstração contábil',
-                'certidão de falência', 'patrimônio líquido',
-                'capital social', 'índice de liquidez'
-            ]
+            'habilitacao_juridica': {
+                'contrato social': 'Contrato Social da empresa com todas as alterações',
+                'ata de assembleia': 'Ata de Assembleia ou documento equivalente',
+                'registro comercial': 'Registro na Junta Comercial',
+                'inscrição comercial': 'Inscrição no órgão competente',
+                'cnpj': 'Comprovante de Inscrição e Situação Cadastral no CNPJ',
+                'documento de constituição': 'Documento de constituição da empresa'
+            },
+            'regularidade_fiscal': {
+                'certidão negativa federal': 'Certidão Negativa de Débitos relativos aos Tributos Federais e à Dívida Ativa da União',
+                'certidão estadual': 'Certidão Negativa de Débitos Estaduais',
+                'certidão municipal': 'Certidão Negativa de Débitos Municipais',
+                'regularidade fgts': 'Certidão de Regularidade do FGTS (CRF)',
+                'certidão trabalhista': 'Certidão Negativa de Débitos Trabalhistas (CNDT)',
+                'cnd': 'Certidão Negativa de Débitos',
+                'certidão de regularidade fiscal': 'Certidão de Regularidade Fiscal',
+                'certidão de regularidade da fazenda': 'Certidão de Regularidade perante a Fazenda'
+            },
+            'qualificacao_tecnica': {
+                'atestado de capacidade técnica': 'Atestado de Capacidade Técnica emitido por pessoa jurídica',
+                'certidão de acervo técnico': 'Certidão de Acervo Técnico (CAT)',
+                'registro profissional': 'Registro no conselho profissional competente',
+                'comprovação de aptidão': 'Comprovação de aptidão para desempenho de atividade',
+                'experiência anterior': 'Comprovação de experiência anterior',
+                'certidão cat': 'Certidão de Acervo Técnico (CAT)'
+            },
+            'qualificacao_economica': {
+                'balanço patrimonial': 'Balanço Patrimonial e demonstrações contábeis do último exercício',
+                'demonstração contábil': 'Demonstrações Contábeis do último exercício social',
+                'certidão de falência': 'Certidão negativa de falência ou recuperação judicial',
+                'patrimônio líquido': 'Comprovação de patrimônio líquido mínimo',
+                'capital social': 'Comprovação de capital social ou patrimônio líquido',
+                'índice de liquidez': 'Comprovação de índices de liquidez'
+            }
         }
         
         text_lower = edital_text.lower()
+        seen_patterns = set()  # Avoid duplicates
         
         # Search for each pattern
-        for category, patterns in document_patterns.items():
-            for pattern in patterns:
-                if pattern in text_lower:
+        for category, patterns_dict in document_patterns.items():
+            for pattern, description in patterns_dict.items():
+                if pattern in text_lower and pattern not in seen_patterns:
+                    seen_patterns.add(pattern)
+                    
+                    # Try to extract context from edital
+                    context = self._extract_context(edital_text, pattern)
+                    
                     # Create requirement
                     req = BidRequirement(
                         name=pattern.title(),
                         category=category,
-                        description=f"Documento identificado: {pattern}",
-                        requirements="Verificar exigências específicas no edital"
+                        description=description,
+                        requirements=context if context else "Conforme especificado no edital"
                     )
                     requirements.append(req)
         
@@ -260,6 +301,36 @@ class EditalReader:
             logger.warning("No documents identified by rule-based extraction")
         
         return requirements
+    
+    def _extract_context(self, text: str, pattern: str, window: int = 150) -> str:
+        """
+        Extract context around a pattern in text.
+        
+        Args:
+            text: Full text
+            pattern: Pattern to find
+            window: Characters before and after pattern
+            
+        Returns:
+            Context string or empty string
+        """
+        text_lower = text.lower()
+        pattern_lower = pattern.lower()
+        
+        pos = text_lower.find(pattern_lower)
+        if pos == -1:
+            return ""
+        
+        start = max(0, pos - window)
+        end = min(len(text), pos + len(pattern) + window)
+        
+        context = text[start:end].strip()
+        
+        # Clean up context
+        if len(context) > 200:
+            context = context[:200] + "..."
+        
+        return context
     
     def extract_requirements(self, edital_text: str) -> List[BidRequirement]:
         """

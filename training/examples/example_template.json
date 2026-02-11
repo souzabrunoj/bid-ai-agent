@@ -1,0 +1,17 @@
+{
+  "edital_name": "Nome do Edital",
+  "requirements": [
+    {
+      "name": "Nome do Documento",
+      "category": "habilitacao_juridica",
+      "description": "Descrição completa do documento",
+      "requirements": "Exigências específicas do edital",
+      "is_mandatory": true
+    }
+  ],
+  "metadata": {
+    "extraction_date": "2026-02-11",
+    "extracted_by": "manual",
+    "notes": "Notas adicionais sobre a extração"
+  }
+}

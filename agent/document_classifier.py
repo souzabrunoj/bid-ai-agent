@@ -117,19 +117,20 @@ class DocumentClassifier:
     FILENAME_PATTERNS = {
         'habilitacao_juridica': [
             'contrato', 'cnpj', 'constituicao', 'estatuto', 'ata',
-            'registro', 'social', 'assembleia'
+            'registro', 'social', 'assembleia', 'contrato_social'
         ],
         'regularidade_fiscal': [
             'certidao', 'cnd', 'regularidade', 'fiscal', 'fazenda',
-            'fgts', 'inss', 'trabalhista', 'federal', 'estadual', 'municipal'
+            'fgts', 'inss', 'trabalhista', 'federal', 'estadual', 'municipal',
+            'civel', 'tributos', 'debitos', 'crf', 'cndt'
         ],
         'qualificacao_tecnica': [
             'atestado', 'capacidade', 'tecnica', 'acervo', 'cat',
-            'registro', 'profissional', 'experiencia'
+            'registro', 'profissional', 'experiencia', 'alvara', 'licenca'
         ],
         'qualificacao_economica': [
             'balanco', 'contabil', 'demonstracao', 'patrimonio',
-            'falencia', 'liquidez', 'capital'
+            'falencia', 'liquidez', 'capital', 'concordata', 'recuperacao'
         ],
     }
     

@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Tuple
 from dateutil import parser as date_parser
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +29,24 @@ class DateValidator:
     
     # Common Brazilian date patterns
     DATE_PATTERNS = [
-        # DD/MM/YYYY
+        # DD/MM/YYYY with various separators
         r'\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b',
         # DD/MM/YY
         r'\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})\b',
         # YYYY-MM-DD (ISO format)
         r'\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b',
+        # Special: VALIDADE followed by date (for headers/fields)
+        r'VALIDADE[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+    ]
+    
+    # Relative validity patterns (e.g., "prazo de 3 meses", "validade de 90 dias")
+    RELATIVE_VALIDITY_PATTERNS = [
+        (r'prazo de (\d+)\s*(?:meses|mês)', 'months'),
+        (r'v[aá]lid[ao] por (\d+)\s*(?:meses|mês)', 'months'),
+        (r'prazo de (\d+)\s*dias?', 'days'),
+        (r'v[aá]lid[ao] por (\d+)\s*dias?', 'days'),
+        (r'validade de (\d+)\s*(?:meses|mês)', 'months'),
+        (r'validade de (\d+)\s*dias?', 'days'),
     ]
     
     # Context keywords that often precede validity dates
@@ -44,10 +57,19 @@ class DateValidator:
         'expira em',
         'válido até',
         'valido ate',
+        'valido até',
         'data de validade',
         'prazo de validade',
         'vigência',
         'vigencia',
+        'vigente até',
+        'vigente ate',
+        'emissão',
+        'emissao',
+        'expedição',
+        'expedicao',
+        'data de expedição',
+        'data de emissão',
     ]
     
     def __init__(self, grace_period_days: int = 0):
@@ -60,6 +82,10 @@ class DateValidator:
         self.grace_period_days = grace_period_days
         self.compiled_patterns = [re.compile(pattern, re.IGNORECASE) 
                                  for pattern in self.DATE_PATTERNS]
+        self.compiled_relative_patterns = [
+            (re.compile(pattern, re.IGNORECASE), unit)
+            for pattern, unit in self.RELATIVE_VALIDITY_PATTERNS
+        ]
     
     def parse_date(self, date_string: str) -> Optional[date]:
         """
@@ -83,14 +109,20 @@ class DateValidator:
                     
                     # Handle DD/MM/YYYY or DD/MM/YY
                     if len(groups) == 3:
-                        day, month, year = groups
-                        day = int(day)
-                        month = int(month)
-                        year = int(year)
+                        # Could be (DD, MM, YYYY) or (YYYY, MM, DD)
+                        first, second, third = groups
+                        first = int(first)
+                        second = int(second)
+                        third = int(third)
+                        
+                        # Detect format
+                        if first > 31:  # YYYY-MM-DD
+                            year, month, day = first, second, third
+                        else:  # DD/MM/YYYY
+                            day, month, year = first, second, third
                         
                         # Handle 2-digit years
                         if year < 100:
-                            # Assume 20xx for years < 50, 19xx for years >= 50
                             year = 2000 + year if year < 50 else 1900 + year
                         
                         # Validate ranges
@@ -109,7 +141,52 @@ class DateValidator:
             logger.debug(f"Failed to parse date: {date_string}")
             return None
     
-    def extract_dates_from_text(self, text: str, context_window: int = 100) -> List[Tuple[date, str]]:
+    def extract_structured_date(self, text: str) -> Optional[date]:
+        """
+        Extract date from structured fields (e.g., VALIDADE: DD/MM/YYYY).
+        
+        Common in document headers and metadata.
+        
+        Args:
+            text: Text to search
+            
+        Returns:
+            Extracted date or None
+        """
+        if not text:
+            return None
+        
+        # Patterns for structured fields
+        structured_patterns = [
+            r'VALIDADE[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'VENCIMENTO[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'V[ÁA]LIDO AT[ÉE][:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'EXPIRA[ÇC][ÃA]O[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'EMISS[ÃA]O[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'EXPEDI[ÇC][ÃA]O[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+        ]
+        
+        for pattern_str in structured_patterns:
+            pattern = re.compile(pattern_str, re.IGNORECASE)
+            match = pattern.search(text)
+            
+            if match:
+                try:
+                    day = int(match.group(1))
+                    month = int(match.group(2))
+                    year = int(match.group(3))
+                    
+                    if 1 <= day <= 31 and 1 <= month <= 12 and 1900 <= year <= 2100:
+                        found_date = date(year, month, day)
+                        logger.info(f"Found structured date: {found_date} from pattern {pattern_str}")
+                        return found_date
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Failed to parse structured date: {e}")
+                    continue
+        
+        return None
+    
+    def extract_dates_from_text(self, text: str, context_window: int = 150) -> List[Tuple[date, str]]:
         """
         Extract dates from text with surrounding context.
         
@@ -141,6 +218,89 @@ class DateValidator:
         
         return dates_found
     
+    def calculate_relative_validity(self, text: str) -> Optional[date]:
+        """
+        Calculate validity date from relative terms (e.g., "prazo de 3 meses").
+        
+        Args:
+            text: Text to search
+            
+        Returns:
+            Calculated validity date or None
+        """
+        # Try to find relative validity pattern
+        relative_match = None
+        unit = None
+        
+        for pattern, pattern_unit in self.compiled_relative_patterns:
+            match = pattern.search(text)
+            if match:
+                relative_match = match
+                unit = pattern_unit
+                break
+        
+        if not relative_match or not unit:
+            return None
+        
+        # Extract the number
+        try:
+            amount = int(relative_match.group(1))
+        except (ValueError, IndexError):
+            return None
+        
+        # Find issue/emission date near the relative validity statement
+        # Look in a window around the relative validity mention
+        window_start = max(0, relative_match.start() - 300)
+        window_end = min(len(text), relative_match.end() + 300)
+        window_text = text[window_start:window_end]
+        
+        # Look for emission/issue date
+        emission_keywords = ['emissão', 'emissao', 'expedição', 'expedicao', 'emitida em', 'expedida em']
+        
+        dates_in_window = self.extract_dates_from_text(window_text, context_window=100)
+        
+        if not dates_in_window:
+            # No emission date found, can't calculate
+            return None
+        
+        # Find the most likely emission date (closest to today, in the past)
+        emission_date = None
+        best_score = -1
+        
+        for found_date, context in dates_in_window:
+            score = 0
+            context_lower = context.lower()
+            
+            # Check for emission keywords
+            for keyword in emission_keywords:
+                if keyword in context_lower:
+                    score += 10
+            
+            # Prefer recent dates in the past
+            if found_date <= date.today():
+                days_ago = (date.today() - found_date).days
+                if days_ago <= 180:  # Within last 6 months
+                    score += 5
+                    score -= days_ago // 30  # Slight penalty for older dates
+            else:
+                score -= 100  # Strong penalty for future dates
+            
+            if score > best_score:
+                best_score = score
+                emission_date = found_date
+        
+        if not emission_date:
+            return None
+        
+        # Calculate validity date
+        if unit == 'months':
+            validity_date = emission_date + relativedelta(months=amount)
+        else:  # days
+            validity_date = emission_date + timedelta(days=amount)
+        
+        logger.info(f"Calculated validity: emission={emission_date}, +{amount} {unit} = {validity_date}")
+        return validity_date
+    
     def find_validity_date(self, text: str) -> Optional[date]:
         """
         Find the most likely validity/expiration date in text.
@@ -156,6 +316,18 @@ class DateValidator:
         """
         if not text:
             return None
+        
+        # First, try to extract from structured fields (fastest and most accurate)
+        structured_date = self.extract_structured_date(text)
+        if structured_date:
+            logger.info(f"Using structured field date: {structured_date}")
+            return structured_date
+        
+        # Second, try to calculate from relative validity (e.g., "prazo de 3 meses")
+        relative_date = self.calculate_relative_validity(text)
+        if relative_date:
+            logger.info(f"Using calculated relative validity date: {relative_date}")
+            return relative_date
         
         # Extract all dates with context
         dates_with_context = self.extract_dates_from_text(text)
@@ -174,15 +346,27 @@ class DateValidator:
             for keyword in self.VALIDITY_KEYWORDS:
                 if keyword in context_lower:
                     score += 10
+                    # Bonus if keyword is very close to date (within 50 chars)
+                    keyword_pos = context_lower.find(keyword)
+                    if keyword_pos != -1 and abs(keyword_pos - len(context)//2) < 50:
+                        score += 5
             
             # Prefer future dates (likely validity dates)
             if found_date > date.today():
-                score += 5
+                score += 8
+            elif found_date == date.today():
+                score += 3
             
             # Prefer dates within reasonable range (not too far in past/future)
             days_diff = abs((found_date - date.today()).days)
             if days_diff < 365 * 2:  # Within 2 years
-                score += 3
+                score += 5
+            elif days_diff < 365 * 5:  # Within 5 years
+                score += 2
+            
+            # Penalize very old dates
+            if found_date < date.today() and days_diff > 365:
+                score -= 10
             
             scored_dates.append((score, found_date, context))
         

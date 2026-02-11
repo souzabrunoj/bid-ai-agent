@@ -207,13 +207,36 @@ class RequirementComparator:
         if requirement.category == document.category:
             score += 0.5
         
-        # Name similarity (simple keyword matching)
+        # Name similarity (check both document type and filename)
         req_name_lower = requirement.name.lower()
         doc_type_lower = document.document_type.lower()
+        doc_filename_lower = document.file_name.lower()
         
-        # Extract keywords
+        # Common abbreviations and synonyms
+        synonyms = {
+            'cnd': ['certidão negativa', 'certidao negativa', 'certidão', 'certidao'],
+            'cndt': ['certidão negativa de débitos trabalhistas', 'certidao trabalhista'],
+            'fgts': ['regularidade do fgts', 'regularidade fgts', 'crf'],
+            'municipal': ['prefeitura', 'município', 'municipio'],
+            'estadual': ['estado', 'fazenda estadual'],
+            'federal': ['receita federal', 'união', 'uniao']
+        }
+        
+        # Extract keywords from requirement
         req_keywords = set(req_name_lower.split())
-        doc_keywords = set(doc_type_lower.split())
+        
+        # Extract keywords from document type AND filename
+        doc_type_keywords = set(doc_type_lower.split())
+        doc_filename_keywords = set(doc_filename_lower.replace('_', ' ').replace('-', ' ').split())
+        doc_keywords = doc_type_keywords | doc_filename_keywords
+        
+        # Check for synonym matches
+        for abbrev, full_terms in synonyms.items():
+            if abbrev in req_name_lower or any(term in req_name_lower for term in full_terms):
+                if abbrev in doc_filename_lower or abbrev in doc_type_lower:
+                    score += 0.3
+                elif any(term in doc_filename_lower or term in doc_type_lower for term in full_terms):
+                    score += 0.25
         
         # Calculate Jaccard similarity
         if req_keywords and doc_keywords:
@@ -222,9 +245,11 @@ class RequirementComparator:
             keyword_similarity = intersection / union if union > 0 else 0
             score += keyword_similarity * 0.3
         
-        # Boost for exact phrase matches
+        # Boost for exact phrase matches in either document type or filename
         if req_name_lower in doc_type_lower or doc_type_lower in req_name_lower:
             score += 0.2
+        if req_name_lower in doc_filename_lower or any(word in doc_filename_lower for word in req_keywords if len(word) > 3):
+            score += 0.15
         
         # Use document's classification confidence
         score *= document.confidence
