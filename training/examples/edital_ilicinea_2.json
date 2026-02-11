@@ -1,0 +1,33 @@
+{
+  "edital_name": "edital_ilicinea_2",
+  "requirements": [
+    {
+      "name": "Contrato Social",
+      "category": "habilitacao_juridica",
+      "description": "Contrato Social da empresa com todas as alterações",
+      "requirements": "cumentos  necessários e suficientes para habilitação jurídica , nos termos dos art. 68 da Lei nº 14.133,\nde 2021 .\n7.4. Ato Constitutivo, Estatuto ou Contrato Social em vigor da licitante, devidamente...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Cnpj",
+      "category": "habilitacao_juridica",
+      "description": "Comprovante de Inscrição e Situação Cadastral no CNPJ",
+      "requirements": "--- Page 1 ---\nPREFEITURA MUNICIPAL DE\nILICÍNEA MG\nEstado de Minas Gerais CNPJ: 18.239.608/0001- 39\nPça. Pe. João Lourenço Leite, 53 – Centro – Ilicínea\nTel.: 0800 035 1319        licitacao@ilicinea.m...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Cnd",
+      "category": "regularidade_fiscal",
+      "description": "Certidão Negativa de Débitos",
+      "requirements": "egularidade expedida pela FAZENDA MUNICIPAL.\n7.10. Certidão de Regularidade expedida pelo FGTS;\n7.11. Prova de regularidade de débitos trabalhistas - CNDT (Certidão Negativa de Débitos Trabalhistas).\n...",
+      "is_mandatory": true
+    }
+  ],
+  "metadata": {
+    "extraction_date": "2026-02-11",
+    "extracted_by": "UI Upload",
+    "extraction_method": "rule_based",
+    "source_file": "edital_ilicinea_2.pdf",
+    "notes": "Automatically extracted via UI"
+  }
+}

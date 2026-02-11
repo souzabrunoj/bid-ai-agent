@@ -1,0 +1,40 @@
+{
+  "edital_name": "edital_campanha",
+  "requirements": [
+    {
+      "name": "Contrato Social",
+      "category": "habilitacao_juridica",
+      "description": "Contrato Social da empresa com todas as alterações",
+      "requirements": "ou jurídica enquadrada nas vedações previstas no art. 14 da Lei nº 14.133/21 ;\n3.2.6 – Pessoa jurídica cujo ramo de atividade previsto em estatuto ou contrato social não seja\npertinente e compatível c...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Cnpj",
+      "category": "habilitacao_juridica",
+      "description": "Comprovante de Inscrição e Situação Cadastral no CNPJ",
+      "requirements": "Municipal de Planejamento e Gestão\nDepartamento de Compras e Licitações\nlicitacampanha@gmail.com | 0800 326 1427\nDr. Brandão, 59 – Centro Campanha MG\nCNPJ: 18.712.174/0001-42\nPROCESSO ADMINISTRATIVO D...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Cnd",
+      "category": "regularidade_fiscal",
+      "description": "Certidão Negativa de Débitos",
+      "requirements": "dade fiscal perante a Fazenda Nacional , através da Certidão Negativa de\nDébitos relativos a Créditos Tributários Federais e à Dívida Ativa da União (CND), expedida\n--- Page 12 ---\nSecretaria Municipa...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Certidão De Regularidade Fiscal",
+      "category": "regularidade_fiscal",
+      "description": "Certidão de Regularidade Fiscal",
+      "requirements": "etaria da Fazenda do domicílio ou sede da licitante.\n13.3.5 – Prova de regularidade para com a Fazenda Municipal ou Distrital,  comprovada através de\nCertidão de Regularidade Fiscal – CRF, emitida pel...",
+      "is_mandatory": true
+    }
+  ],
+  "metadata": {
+    "extraction_date": "2026-02-11",
+    "extracted_by": "UI Upload",
+    "extraction_method": "rule_based",
+    "source_file": "edital_campanha.pdf",
+    "notes": "Automatically extracted via UI"
+  }
+}

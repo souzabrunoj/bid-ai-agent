@@ -1,0 +1,33 @@
+{
+  "edital_name": "edital_passos",
+  "requirements": [
+    {
+      "name": "Contrato Social",
+      "category": "habilitacao_juridica",
+      "description": "Contrato Social da empresa com todas as alterações",
+      "requirements": "mprometer o sigilo ou a inviabilidade do uso da senha, para imediato bloqueio de\nacesso.\n3.6. Tratando -se de REPRESENTANTE LEGAL , deverá apresentar contrato social1, acompanhado de\ntodas as alteraçõ...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Registro Comercial",
+      "category": "habilitacao_juridica",
+      "description": "Registro na Junta Comercial",
+      "requirements": "41.745/0001 -08\nPLANILHA DE ITENS E ANEXO I - TERMO DE REFERÊNCIA.\n5. DA HABILITAÇÃO\n5.1. DOCUMENTAÇÃO NECESSÁRIA PARA HABILITAÇÃO JURÍDICA :\n5.1.1.  Registro comercial , no caso de empresa individual...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Cnpj",
+      "category": "habilitacao_juridica",
+      "description": "Comprovante de Inscrição e Situação Cadastral no CNPJ",
+      "requirements": "Page 1 ---\nPREFEITURA MUNICIPAL DE PASSOS\nPraça Geraldo da Silva Maia, nº 175 – Passos – Minas Gerais - CEP 37900 -900.\nlicitacao.pe@passos.mg.gov.br\nCNPJ 18.241.745/0001 -08\nEDITAL DE LICITAÇÃO\nREGIS...",
+      "is_mandatory": true
+    }
+  ],
+  "metadata": {
+    "extraction_date": "2026-02-11",
+    "extracted_by": "UI Upload",
+    "extraction_method": "rule_based",
+    "source_file": "edital_passos.pdf",
+    "notes": "Automatically extracted via UI"
+  }
+}
