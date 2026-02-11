@@ -42,6 +42,13 @@ bid-ai-agent/
 
 - Python 3.10 or higher
 - Tesseract OCR (for scanned PDFs)
+  - **macOS**: `brew install tesseract tesseract-lang`
+  - **Ubuntu/Debian**: `sudo apt-get install tesseract-ocr tesseract-ocr-por`
+  - **Windows**: Download from [GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
+- Poppler (for pdf2image)
+  - **macOS**: `brew install poppler`
+  - **Ubuntu/Debian**: `sudo apt-get install poppler-utils`
+  - **Windows**: Download from [GitHub](https://github.com/oschwartz10612/poppler-windows/releases)
 
 ### Installation
 
@@ -65,25 +72,58 @@ pip install -r requirements.txt
 4. Configure environment:
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your settings (optional)
 ```
 
-5. Download a local LLM model (e.g., Llama 3):
+5. Download a local LLM model (optional but recommended):
 ```bash
-# Place your .gguf model file in the models/ directory
+# Download a .gguf model file (e.g., Llama 3 8B or Mistral 7B)
+# Recommended sources:
+# - https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF
+# - https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF
+
+# Place the downloaded .gguf file in the models/ directory
+# Update .env with the model path if needed
 ```
+
+**Note:** The system works without an LLM using rule-based extraction, but LLM provides better accuracy.
 
 ### Usage
+
+#### Start the Web Interface
 
 ```bash
 streamlit run ui/app.py
 ```
 
-Then:
-1. Upload the bid notice (edital) PDF
-2. Upload your company documents
-3. Click "Process Bid"
-4. Review the generated checklist and organized folders
+Then open your browser to `http://localhost:8501` and:
+
+1. **Upload the bid notice (edital)** - PDF file containing requirements
+2. **Upload your company documents** - All relevant PDFs
+3. **Configure options** (validate dates, include expired, etc.)
+4. **Click "Processar Licitação"** to start processing
+5. **Review results** - Checklist, summary, and organized folders
+
+#### Output
+
+The system generates:
+- **Organized folders** by document category
+- **CHECKLIST.txt** - Detailed requirement checklist
+- **RESUMO.txt** - Executive summary
+- **relatorio.json** - Complete technical report
+- **LEIA-ME.txt** - Important instructions
+
+### Command Line Usage
+
+```python
+# Example: Analyze an edital programmatically
+from pathlib import Path
+from agent import analyze_edital_file
+
+edital_path = Path("input/edital.pdf")
+analysis = analyze_edital_file(edital_path)
+print(f"Found {analysis['total_requirements']} requirements")
+```
 
 ## 📋 Document Categories
 
