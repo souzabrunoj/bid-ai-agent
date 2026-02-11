@@ -63,6 +63,7 @@ class ClassifiedDocument:
         self.category = category
         self.confidence = confidence
         self.expiration_date = expiration_date
+        self.validity_date = expiration_date  # Alias for compatibility
         self.is_expired = is_expired
         self.days_until_expiration = days_until_expiration
         self.text_content = text_content
@@ -89,6 +90,9 @@ class ClassifiedDocument:
             if self.days_until_expiration < 30:
                 return 'expires_soon'
             return 'valid'
+        elif self.expiration_date is None and not self.is_expired:
+            # No expiration date found - could be non-expiring document or unknown
+            return 'valid'  # Assume valid if no date and not marked as expired
         return 'unknown'
     
     def __repr__(self) -> str:
@@ -134,6 +138,34 @@ class DocumentClassifier:
         ],
     }
     
+    # Documents that DO NOT expire (no validity date)
+    NO_EXPIRY_PATTERNS = [
+        'contrato_social',      # Social contract - valid until amended
+        'contrato social',
+        'estatuto',             # Company statute
+        'cnpj',                 # CNPJ registration
+        'ata',                  # Meeting minutes
+        'atestado',             # Technical attestation
+        'capacidade_tecnica',   # Technical capacity certificate
+        'capacidade tecnica',
+        'acervo',               # Technical portfolio
+        'registro',             # Professional registration (some types)
+        'inscricao',            # Registration documents
+    ]
+    
+    # Documents with ISSUANCE date (not expiry) - typically 90 days validity
+    ISSUANCE_DATE_PATTERNS = [
+        'falencia',             # Bankruptcy certificate
+        'concordata',           # Concordat certificate
+        'recuperacao',          # Judicial recovery certificate
+        'certidao_falencia',
+        'certidao falencia',
+        'civel',                # Civil court certificate
+        'cnd_civel',
+        'certidao civel',
+        'certidao_civel',
+    ]
+    
     def __init__(self, use_llm: bool = True):
         """
         Initialize document classifier.
@@ -152,6 +184,42 @@ class DocumentClassifier:
             except LLMError as e:
                 logger.warning(f"LLM initialization failed: {e}")
                 self.use_llm = False
+    
+    def _is_non_expiring_document(self, filename: str) -> bool:
+        """
+        Check if document type does not have expiration date.
+        
+        Args:
+            filename: Document filename
+            
+        Returns:
+            True if document doesn't expire
+        """
+        filename_lower = filename.lower()
+        
+        for pattern in self.NO_EXPIRY_PATTERNS:
+            if pattern in filename_lower:
+                return True
+        
+        return False
+    
+    def _is_issuance_date_document(self, filename: str) -> bool:
+        """
+        Check if document has issuance date (not expiry) with 90-day validity.
+        
+        Args:
+            filename: Document filename
+            
+        Returns:
+            True if document uses issuance date
+        """
+        filename_lower = filename.lower()
+        
+        for pattern in self.ISSUANCE_DATE_PATTERNS:
+            if pattern in filename_lower:
+                return True
+        
+        return False
     
     def classify_by_filename(self, filename: str) -> tuple[str, float]:
         """
@@ -289,6 +357,85 @@ class DocumentClassifier:
                 'status': 'unknown'
             }
     
+    def extract_issuance_date(self, text_content: str, max_days: int = 90) -> Dict[str, Any]:
+        """
+        Extract ISSUANCE date from document (for certificates with 90-day validity).
+        
+        Args:
+            text_content: Document text content
+            max_days: Maximum days since issuance (default 90)
+            
+        Returns:
+            Dictionary with issuance date validation results
+        """
+        from datetime import datetime, date
+        import re
+        
+        try:
+            # Look for issuance date patterns
+            issuance_patterns = [
+                r'(?:data\s+de\s+)?emiss[ãa]o[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+                r'(?:data\s+de\s+)?expedi[çc][ãa]o[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+                r'expedido\s+em[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+                r'emitido\s+em[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            ]
+            
+            issuance_date = None
+            for pattern_str in issuance_patterns:
+                pattern = re.compile(pattern_str, re.IGNORECASE)
+                match = pattern.search(text_content.lower())
+                
+                if match:
+                    try:
+                        day, month, year = match.groups()
+                        issuance_date = date(int(year), int(month), int(day))
+                        logger.info(f"Found issuance date: {issuance_date}")
+                        break
+                    except (ValueError, IndexError):
+                        continue
+            
+            if not issuance_date:
+                return {
+                    'has_date': False,
+                    'issuance_date': None,
+                    'days_since_issuance': None,
+                    'is_expired': False,
+                    'status': 'unknown'
+                }
+            
+            # Calculate days since issuance
+            today = date.today()
+            days_since = (today - issuance_date).days
+            
+            # Check if within 90-day limit
+            is_expired = days_since > max_days
+            
+            status = 'expired' if is_expired else 'valid'
+            if not is_expired and days_since > (max_days - 10):  # Within 10 days of limit
+                status = 'expires_soon'
+            
+            logger.info(f"Issuance date validation: {issuance_date}, {days_since} days ago, status: {status}")
+            
+            return {
+                'has_date': True,
+                'issuance_date': issuance_date,
+                'days_since_issuance': days_since,
+                'is_expired': is_expired,
+                'expiration_date': None,  # Not applicable
+                'days_until_expiration': None,
+                'status': status
+            }
+            
+        except Exception as e:
+            logger.warning(f"Issuance date extraction failed: {e}")
+            return {
+                'has_date': False,
+                'issuance_date': None,
+                'days_since_issuance': None,
+                'is_expired': False,
+                'status': 'unknown'
+            }
+    
     def classify_document(
         self,
         file_path: Path,
@@ -337,20 +484,37 @@ class DocumentClassifier:
                 category, confidence = self.classify_by_filename(file_path.name)
                 document_type = file_path.name
             
-            # Extract validity date
+            # Extract validity date (only if document type can expire)
             date_info = None
-            if text_content:
-                date_info = self.extract_validity_date(text_content)
+            if text_content and not self._is_non_expiring_document(file_path.name):
+                # Check if it's an issuance-date document (90-day validity)
+                if self._is_issuance_date_document(file_path.name):
+                    logger.info(f"Document {file_path.name} uses issuance date (90-day validity)")
+                    date_info = self.extract_issuance_date(text_content, max_days=90)
+                else:
+                    date_info = self.extract_validity_date(text_content)
+            elif self._is_non_expiring_document(file_path.name):
+                logger.info(f"Document {file_path.name} is a non-expiring type, skipping date validation")
             
             # Create classified document
+            # Handle both expiration_date and issuance_date
+            if date_info:
+                expiration_date = date_info.get('expiration_date') or date_info.get('issuance_date')
+                is_expired = date_info.get('is_expired', False)
+                days_until_expiration = date_info.get('days_until_expiration') or date_info.get('days_since_issuance')
+            else:
+                expiration_date = None
+                is_expired = False
+                days_until_expiration = None
+            
             classified = ClassifiedDocument(
                 file_path=file_path,
                 document_type=document_type,
                 category=category,
                 confidence=confidence,
-                expiration_date=date_info['expiration_date'] if date_info else None,
-                is_expired=date_info['is_expired'] if date_info else False,
-                days_until_expiration=date_info['days_until_expiration'] if date_info else None,
+                expiration_date=expiration_date,
+                is_expired=is_expired,
+                days_until_expiration=days_until_expiration,
                 text_content=text_content if extract_text else None
             )
             

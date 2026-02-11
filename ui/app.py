@@ -98,15 +98,35 @@ def get_local_documents() -> List[Path]:
 def get_document_validity(doc_path: str) -> dict:
     """Get document validity date with caching."""
     try:
+        doc_name = Path(doc_path).name.lower()
+        
+        # Check if it's an issuance-date document (90-day validity from issuance)
+        issuance_patterns = ['falencia', 'concordata', 'recuperacao', 'certidao_falencia', 'certidao falencia', 'civel', 'cnd_civel', 'certidao civel', 'certidao_civel']
+        is_issuance_doc = any(pattern in doc_name for pattern in issuance_patterns)
+        
         # Try without OCR first (faster)
         text = extract_pdf_text(Path(doc_path), enable_ocr=False)
-        date_validator = DateValidator()
-        result = date_validator.validate_document_date(text, Path(doc_path).name)
+        
+        if is_issuance_doc:
+            # Use issuance date logic (90-day validity)
+            from agent.document_classifier import DocumentClassifier
+            classifier = DocumentClassifier()
+            result = classifier.extract_issuance_date(text, max_days=90)
+        else:
+            # Use regular validity date logic
+            date_validator = DateValidator()
+            result = date_validator.validate_document_date(text, Path(doc_path).name)
         
         # If no date found, try with OCR
         if not result['has_date']:
             text = extract_pdf_text(Path(doc_path), enable_ocr=True)
-            result = date_validator.validate_document_date(text, Path(doc_path).name)
+            if is_issuance_doc:
+                from agent.document_classifier import DocumentClassifier
+                classifier = DocumentClassifier()
+                result = classifier.extract_issuance_date(text, max_days=90)
+            else:
+                date_validator = DateValidator()
+                result = date_validator.validate_document_date(text, Path(doc_path).name)
         
         return result
     except Exception:
@@ -176,8 +196,8 @@ def display_system_status():
 
 
 def section_edital_upload():
-    """Section 1: Upload bid notice (edital)."""
-    st.header("1️⃣ Upload do Edital")
+    """Section 2: Upload bid notice (edital)."""
+    st.header("2️⃣ Upload do Edital")
     st.markdown("Envie o arquivo PDF do edital de licitação")
 
     edital_file = st.file_uploader(
@@ -201,8 +221,8 @@ def section_edital_upload():
 
 
 def section_documents():
-    """Section 2: Company documents (local folder + upload)."""
-    st.header("2️⃣ Documentos da Empresa")
+    """Section 1: Company documents (local folder + upload)."""
+    st.header("1️⃣ Documentos da Empresa")
 
     local_docs = get_local_documents()
 
@@ -238,28 +258,72 @@ def section_documents():
         st.markdown("")  # Small space
         
         for doc in local_docs:
-                # Get validity date (cached)
-                date_info = get_document_validity(str(doc))
+                # First, check if document is non-expiring type
+                non_expiring_patterns = [
+                    'contrato_social', 'contrato social', 'estatuto', 'cnpj',
+                    'ata', 'atestado', 'capacidade_tecnica', 'capacidade tecnica'
+                ]
+                
+                is_non_expiring = any(pattern in doc.name.lower() for pattern in non_expiring_patterns)
+                
+                # Check if it's an issuance-date document (falência, concordata, cível, etc.)
+                issuance_patterns = ['falencia', 'concordata', 'recuperacao', 'certidao_falencia', 'certidao falencia', 'civel', 'cnd_civel', 'certidao civel']
+                is_issuance_doc = any(pattern in doc.name.lower() for pattern in issuance_patterns)
                 
                 # Determine status
-                if date_info['has_date'] and date_info['expiration_date']:
-                    exp_date = date_info['expiration_date'].strftime('%d/%m/%Y')
-                    if date_info['is_expired']:
-                        status_emoji = "⏰"
-                        status_text = f"Vencido: {exp_date}"
-                        status_color = "#ff4b4b"
-                    elif date_info.get('expires_soon', False):
-                        status_emoji = "⚠️"
-                        status_text = f"Vence: {exp_date}"
-                        status_color = "#ffa500"
-                    else:
-                        status_emoji = "✅"
-                        status_text = f"Válido até: {exp_date}"
-                        status_color = "#00cc66"
+                if is_non_expiring:
+                    # Document doesn't expire
+                    status_emoji = "✅"
+                    status_text = "Sem validade"
+                    status_color = "#00cc66"
                 else:
-                    status_emoji = "⚠️"
-                    status_text = "Verificar manualmente"
-                    status_color = "#ffa500"
+                    # Get validity date (cached) for documents that can expire
+                    date_info = get_document_validity(str(doc))
+                    
+                    if date_info['has_date']:
+                        # Check if it's issuance date (days since) or expiration date (days until)
+                        if is_issuance_doc and date_info.get('days_since_issuance') is not None:
+                            days_since = date_info['days_since_issuance']
+                            issue_date = date_info.get('issuance_date')
+                            if issue_date:
+                                issue_date_str = issue_date.strftime('%d/%m/%Y')
+                            else:
+                                issue_date_str = "data não detectada"
+                            
+                            if date_info['is_expired']:
+                                status_emoji = "⏰"
+                                status_text = f"Emitida há {days_since} dias (máx. 90)"
+                                status_color = "#ff4b4b"
+                            elif days_since > 80:  # Próximo do limite
+                                status_emoji = "⚠️"
+                                status_text = f"Emitida há {days_since} dias (máx. 90)"
+                                status_color = "#ffa500"
+                            else:
+                                status_emoji = "✅"
+                                status_text = f"Emitida há {days_since} dias (OK)"
+                                status_color = "#00cc66"
+                        elif date_info.get('expiration_date'):
+                            exp_date = date_info['expiration_date'].strftime('%d/%m/%Y')
+                            if date_info['is_expired']:
+                                status_emoji = "⏰"
+                                status_text = f"Vencido: {exp_date}"
+                                status_color = "#ff4b4b"
+                            elif date_info.get('expires_soon', False):
+                                status_emoji = "⚠️"
+                                status_text = f"Vence: {exp_date}"
+                                status_color = "#ffa500"
+                            else:
+                                status_emoji = "✅"
+                                status_text = f"Válido até: {exp_date}"
+                                status_color = "#00cc66"
+                        else:
+                            status_emoji = "⚠️"
+                            status_text = "Verificar manualmente"
+                            status_color = "#ffa500"
+                    else:
+                        status_emoji = "⚠️"
+                        status_text = "Verificar manualmente"
+                        status_color = "#ffa500"
                 
                 # Single row layout
                 cols = st.columns([4, 3, 1])
@@ -510,10 +574,26 @@ def display_results():
     st.divider()
 
     compliance_rate = report.get_compliance_rate()
+    
+    # Count status types
+    expired_count = len([m for m in report.matches if m.status == 'expired'])
+    missing_count = len([m for m in report.matches if m.status == 'missing'])
+    warning_count = len([m for m in report.matches if m.status == 'warning'])
+    
     if report.is_compliant():
         st.success(f"✅ **DOCUMENTAÇÃO COMPLETA** ({compliance_rate:.1f}% conforme)")
     else:
-        st.warning(f"⚠️ **DOCUMENTAÇÃO INCOMPLETA** ({compliance_rate:.1f}% conforme)")
+        # More detailed message
+        issues = []
+        if missing_count > 0:
+            issues.append(f"{missing_count} faltando")
+        if expired_count > 0:
+            issues.append(f"{expired_count} vencido{'s' if expired_count > 1 else ''}")
+        if warning_count > 0:
+            issues.append(f"{warning_count} com alerta")
+        
+        issue_text = " | ".join(issues) if issues else "pendências"
+        st.warning(f"⚠️ **ATENÇÃO** ({compliance_rate:.1f}% conforme) - {issue_text}")
 
     st.divider()
 
@@ -532,24 +612,42 @@ def display_summary_tab(report):
 
     if report.statistics['requirements_missing'] > 0:
         with st.expander("❌ Documentos Faltantes", expanded=True):
+            st.error(f"**{report.statistics['requirements_missing']} documento(s) não encontrado(s):**")
+            st.markdown("")
             for match in report.matches:
                 if match.status == 'missing':
                     st.error(f"**• {match.requirement.name}**")
                     if match.requirement.description:
-                        st.caption(f"   📋 {match.requirement.description}")
+                        st.caption(f"   📋 Descrição: {match.requirement.description}")
                     if match.requirement.requirements:
                         st.caption(f"   ⚠️ Exigência do edital: {match.requirement.requirements}")
                     st.caption(f"   📁 Categoria: {match.requirement.category.replace('_', ' ').title()}")
+                    st.caption("   💡 Adicione este documento na seção 1️⃣ (Documentos da Empresa)")
                     st.markdown("")
 
     if report.statistics['requirements_expired'] > 0:
         with st.expander("⏰ Documentos Vencidos", expanded=True):
+            st.error(f"**{report.statistics['requirements_expired']} documento(s) precisa(m) ser atualizado(s):**")
+            st.markdown("")
             for match in report.matches:
                 if match.status == 'expired' and match.matched_document:
-                    st.warning(f"• {match.matched_document.file_name}")
+                    st.warning(f"**• {match.matched_document.file_name}**")
+                    st.caption(f"   📋 Requisito: {match.requirement.name}")
+                    
+                    # Check if has validity or issuance date
+                    if match.matched_document.validity_date:
+                        expiry = match.matched_document.validity_date
+                        st.caption(f"   📅 Vencimento: {expiry.strftime('%d/%m/%Y')}")
+                    
+                    # Show days since issuance if available (for falência/cível certificates)
+                    issuance_patterns = ['falencia', 'concordata', 'recuperacao', 'civel']
+                    if any(pattern in match.matched_document.file_name.lower() for pattern in issuance_patterns):
+                        st.caption(f"   ⏰ Este documento deve ter data de emissão inferior a 90 dias")
+                    
                     for obs in match.get_observations():
-                        st.caption(f"  {obs}")
-                    st.caption("  💡 Faça upload do documento atualizado na seção 2")
+                        st.caption(f"   {obs}")
+                    st.caption("   💡 Atualize este documento na seção 1️⃣ (Documentos da Empresa)")
+                    st.markdown("")
 
     if report.statistics['requirements_warning'] > 0:
         with st.expander("⚠️ Documentos com Aviso"):
@@ -787,9 +885,9 @@ def main():
         st.divider()
 
     st.divider()
-    section_edital_upload()
-    st.divider()
     section_documents()
+    st.divider()
+    section_edital_upload()
     st.divider()
     section_options()
     st.divider()

@@ -6,6 +6,7 @@ and their categories for procurement participation.
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import json
@@ -237,61 +238,61 @@ class EditalReader:
         requirements = []
         
         # Common document patterns in Brazilian editais with detailed descriptions
+        # Using regex patterns for more flexible matching
         document_patterns = {
-            'habilitacao_juridica': {
-                'contrato social': 'Contrato Social da empresa com todas as alterações',
-                'ata de assembleia': 'Ata de Assembleia ou documento equivalente',
-                'registro comercial': 'Registro na Junta Comercial',
-                'inscrição comercial': 'Inscrição no órgão competente',
-                'cnpj': 'Comprovante de Inscrição e Situação Cadastral no CNPJ',
-                'documento de constituição': 'Documento de constituição da empresa'
-            },
-            'regularidade_fiscal': {
-                'certidão negativa federal': 'Certidão Negativa de Débitos relativos aos Tributos Federais e à Dívida Ativa da União',
-                'certidão estadual': 'Certidão Negativa de Débitos Estaduais',
-                'certidão municipal': 'Certidão Negativa de Débitos Municipais',
-                'regularidade fgts': 'Certidão de Regularidade do FGTS (CRF)',
-                'certidão trabalhista': 'Certidão Negativa de Débitos Trabalhistas (CNDT)',
-                'cnd': 'Certidão Negativa de Débitos',
-                'certidão de regularidade fiscal': 'Certidão de Regularidade Fiscal',
-                'certidão de regularidade da fazenda': 'Certidão de Regularidade perante a Fazenda'
-            },
-            'qualificacao_tecnica': {
-                'atestado de capacidade técnica': 'Atestado de Capacidade Técnica emitido por pessoa jurídica',
-                'certidão de acervo técnico': 'Certidão de Acervo Técnico (CAT)',
-                'registro profissional': 'Registro no conselho profissional competente',
-                'comprovação de aptidão': 'Comprovação de aptidão para desempenho de atividade',
-                'experiência anterior': 'Comprovação de experiência anterior',
-                'certidão cat': 'Certidão de Acervo Técnico (CAT)'
-            },
-            'qualificacao_economica': {
-                'balanço patrimonial': 'Balanço Patrimonial e demonstrações contábeis do último exercício',
-                'demonstração contábil': 'Demonstrações Contábeis do último exercício social',
-                'certidão de falência': 'Certidão negativa de falência ou recuperação judicial',
-                'patrimônio líquido': 'Comprovação de patrimônio líquido mínimo',
-                'capital social': 'Comprovação de capital social ou patrimônio líquido',
-                'índice de liquidez': 'Comprovação de índices de liquidez'
-            }
+            'habilitacao_juridica': [
+                (r'(?:ato constitutivo|contrato social|estatuto)', 'Contrato Social', 'Ato constitutivo, estatuto ou contrato social em vigor'),
+                (r'cnpj', 'CNPJ', 'Prova de inscrição no Cadastro Nacional de Pessoa Jurídica (CNPJ)'),
+                (r'(?:ata|assembleia|elei[çc][ãa]o)', 'Ata de Eleição', 'Ata de eleição dos administradores ou documento equivalente'),
+                (r'(?:registro|inscri[çc][ãa]o).{0,20}(?:comercial|junta|cart[óo]rio)', 'Registro Comercial', 'Registro na Junta Comercial ou Cartório'),
+            ],
+            'regularidade_fiscal': [
+                (r'(?:certid[ãa]o|regularidade).{0,30}(?:tributos?\s+federais?|fazenda\s+federal|uni[ãa]o|federal)', 'CND Federal', 'Certidão de Regularidade de débitos relativos aos Tributos Federais e à Dívida Ativa da União'),
+                (r'(?:certid[ãa]o|regularidade).{0,30}(?:tributos?\s+estaduais?|fazenda\s+estadual|estado)', 'CND Estadual', 'Certidão de Regularidade de débitos relativos aos Tributos Estaduais'),
+                (r'(?:certid[ãa]o|regularidade).{0,30}(?:tributos?\s+municipais?|fazenda\s+municipal|munic[íi]pio)', 'CND Municipal', 'Certidão de Regularidade de débitos relativos aos Tributos Municipais'),
+                (r'(?:certid[ãa]o|regularidade).{0,20}(?:fgts)', 'FGTS', 'Certidão de Regularidade do FGTS'),
+                (r'(?:certid[ãa]o|cndt).{0,30}(?:d[ée]bitos?\s+trabalhistas?|trabalhista)', 'CNDT', 'Certidão Negativa de Débitos Trabalhistas'),
+            ],
+            'qualificacao_economica': [
+                (r'(?:certid[ãa]o).{0,30}(?:fal[êe]ncia|concordata|recupera[çc][ãa]o\s+judicial)', 'Certidão de Falência', 'Certidão negativa de falência, concordata ou recuperação judicial'),
+                (r'balan[çc]o\s+patrimonial', 'Balanço Patrimonial', 'Balanço patrimonial e demonstrações contábeis do último exercício'),
+                (r'(?:patrim[ôo]nio\s+l[íi]quido|capital\s+social)', 'Capital Social', 'Comprovação de patrimônio líquido ou capital social mínimo'),
+            ],
+            'qualificacao_tecnica': [
+                (r'atestado.{0,20}(?:capacidade|t[ée]cnica)', 'Atestado Técnico', 'Atestado de Capacidade Técnica'),
+                (r'(?:certid[ãa]o|cat).{0,20}acervo\s+t[ée]cnico', 'CAT', 'Certidão de Acervo Técnico'),
+                (r'registro\s+profissional', 'Registro Profissional', 'Registro em conselho profissional competente'),
+            ]
         }
         
         text_lower = edital_text.lower()
-        seen_patterns = set()  # Avoid duplicates
+        seen_names = set()  # Avoid duplicates
         
-        # Search for each pattern
-        for category, patterns_dict in document_patterns.items():
-            for pattern, description in patterns_dict.items():
-                if pattern in text_lower and pattern not in seen_patterns:
-                    seen_patterns.add(pattern)
+        # Search for each pattern using regex
+        for category, patterns_list in document_patterns.items():
+            for pattern_regex, doc_name, description in patterns_list:
+                # Compile and search
+                regex = re.compile(pattern_regex, re.IGNORECASE)
+                match = regex.search(text_lower)
+                
+                if match and doc_name not in seen_names:
+                    seen_names.add(doc_name)
                     
-                    # Try to extract context from edital
-                    context = self._extract_context(edital_text, pattern)
+                    # Try to extract context from edital at match position
+                    match_start = match.start()
+                    context_start = max(0, match_start - 100)
+                    context_end = min(len(edital_text), match_start + 250)
+                    context = edital_text[context_start:context_end].strip()
+                    
+                    # Clean up context
+                    context = ' '.join(context.split())
                     
                     # Create requirement
                     req = BidRequirement(
-                        name=pattern.title(),
+                        name=doc_name,
                         category=category,
                         description=description,
-                        requirements=context if context else "Conforme especificado no edital"
+                        requirements=context if len(context) > 20 else "Conforme especificado no edital"
                     )
                     requirements.append(req)
         

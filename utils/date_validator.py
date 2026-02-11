@@ -146,17 +146,40 @@ class DateValidator:
         Extract date from structured fields (e.g., VALIDADE: DD/MM/YYYY).
         
         Common in document headers and metadata.
+        Supports validity periods (e.g., "VALIDADE: DD/MM/YYYY a DD/MM/YYYY").
         
         Args:
             text: Text to search
             
         Returns:
-            Extracted date or None
+            Extracted date or None (uses END date for validity periods)
         """
         if not text:
             return None
         
-        # Patterns for structured fields
+        # First check for validity PERIOD patterns (start date to end date)
+        # Use the END date as the actual validity
+        period_patterns = [
+            r'VALIDADE[:\s]+\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}\s*(?:a|at[eé]|[-])\s*(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'V[ÁA]LID[OA][:\s]+\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}\s*(?:a|at[eé]|[-])\s*(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+            r'VIG[EÊ]NCIA[:\s]+\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}\s*(?:a|at[eé]|[-])\s*(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
+        ]
+        
+        for pattern_str in period_patterns:
+            pattern = re.compile(pattern_str, re.IGNORECASE)
+            match = pattern.search(text)
+            
+            if match:
+                try:
+                    day, month, year = match.groups()
+                    parsed_date = date(int(year), int(month), int(day))
+                    logger.info(f"Found validity period, using END date: {parsed_date} from pattern {pattern_str}")
+                    return parsed_date
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Failed to parse period end date: {e}")
+                    continue
+        
+        # Patterns for single date structured fields
         structured_patterns = [
             r'VALIDADE[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',
             r'VENCIMENTO[:\s]+(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})',

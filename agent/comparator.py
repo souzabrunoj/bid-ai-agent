@@ -215,11 +215,17 @@ class RequirementComparator:
         # Common abbreviations and synonyms
         synonyms = {
             'cnd': ['certidão negativa', 'certidao negativa', 'certidão', 'certidao'],
-            'cndt': ['certidão negativa de débitos trabalhistas', 'certidao trabalhista'],
-            'fgts': ['regularidade do fgts', 'regularidade fgts', 'crf'],
-            'municipal': ['prefeitura', 'município', 'municipio'],
-            'estadual': ['estado', 'fazenda estadual'],
-            'federal': ['receita federal', 'união', 'uniao']
+            'cndt': ['certidão negativa de débitos trabalhistas', 'certidao trabalhista', 'cnd trabalhista', 'cnd_trabalhista', 'trabalhista'],
+            'fgts': ['regularidade do fgts', 'regularidade fgts', 'crf', 'cnd fgts', 'cnd_fgts'],
+            'municipal': ['prefeitura', 'município', 'municipio', 'cnd municipal', 'cnd_municipal'],
+            'estadual': ['estado', 'fazenda estadual', 'cnd estadual', 'cnd_estadual'],
+            'federal': ['receita federal', 'união', 'uniao', 'cnd federal', 'cnd_federal'],
+            'contrato social': ['contrato_social', 'ato constitutivo', 'estatuto', 'registro comercial', 'registro_comercial'],
+            'registro comercial': ['contrato_social', 'contrato social', 'ato constitutivo', 'estatuto'],  # Can be satisfied by contrato social
+            'cnpj': ['cadastro nacional', 'pessoa juridica'],
+            'falência': ['falencia', 'concordata', 'recuperação', 'recuperacao', 'certidao_falencia', 'certidao falencia'],
+            'cível': ['civel', 'cnd_civel', 'certidao civel', 'certidao_civel', 'judicial civel'],
+            'atestado': ['capacidade técnica', 'capacidade tecnica', 'atestado técnico', 'atestado tecnico']
         }
         
         # Extract keywords from requirement
@@ -230,13 +236,22 @@ class RequirementComparator:
         doc_filename_keywords = set(doc_filename_lower.replace('_', ' ').replace('-', ' ').split())
         doc_keywords = doc_type_keywords | doc_filename_keywords
         
-        # Check for synonym matches
+        # Check for synonym matches (considering underscores and spaces)
+        doc_filename_normalized = doc_filename_lower.replace('_', ' ').replace('-', ' ')
+        
         for abbrev, full_terms in synonyms.items():
             if abbrev in req_name_lower or any(term in req_name_lower for term in full_terms):
-                if abbrev in doc_filename_lower or abbrev in doc_type_lower:
-                    score += 0.3
-                elif any(term in doc_filename_lower or term in doc_type_lower for term in full_terms):
-                    score += 0.25
+                # Check in filename (normalized)
+                if abbrev in doc_filename_normalized or abbrev in doc_type_lower:
+                    score += 0.35
+                # Check full terms
+                elif any(term in doc_filename_normalized or term in doc_type_lower for term in full_terms):
+                    score += 0.30
+                # Check if requirement has synonym and filename contains it
+                for term in full_terms:
+                    if term in doc_filename_normalized and abbrev in req_name_lower:
+                        score += 0.25
+                        break
         
         # Calculate Jaccard similarity
         if req_keywords and doc_keywords:
@@ -248,13 +263,78 @@ class RequirementComparator:
         # Boost for exact phrase matches in either document type or filename
         if req_name_lower in doc_type_lower or doc_type_lower in req_name_lower:
             score += 0.2
-        if req_name_lower in doc_filename_lower or any(word in doc_filename_lower for word in req_keywords if len(word) > 3):
+        if req_name_lower in doc_filename_normalized:
+            score += 0.25
+        elif any(word in doc_filename_normalized for word in req_keywords if len(word) > 3):
             score += 0.15
+        
+        # Strong boost for exact filename matches (without extension)
+        filename_no_ext = doc_filename_lower.replace('.pdf', '').replace('_', ' ').replace('-', ' ')
+        req_normalized = req_name_lower.replace('_', ' ').replace('-', ' ')
+        
+        # Exact match bonus (very strong)
+        if filename_no_ext == req_normalized:
+            score += 0.50  # Very strong boost for exact match
+        elif req_normalized in filename_no_ext or filename_no_ext in req_normalized:
+            score += 0.20
+        
+        # Specific strong matches (to ensure correct pairing)
+        exact_pairs = [
+            (['cnpj'], ['cnpj'], 0.70),
+            (['contrato social', 'contrato_social', 'ato constitutivo'], ['contrato_social', 'contrato social'], 0.70),
+            (['registro comercial', 'registro_comercial'], ['contrato_social', 'contrato social'], 0.70),  # Registro comercial = Contrato Social
+            (['cnd federal', 'cnd_federal', 'federal'], ['cnd_federal', 'cnd federal'], 0.70),
+            (['cnd estadual', 'cnd_estadual', 'estadual'], ['cnd_estadual', 'cnd estadual'], 0.70),
+            (['cnd municipal', 'cnd_municipal', 'municipal'], ['cnd_municipal', 'cnd municipal'], 0.70),
+            (['cnd trabalhista', 'cndt', 'cnd_trabalhista', 'trabalhista'], ['cnd_trabalhista', 'cnd trabalhista', 'trabalhista'], 0.70),
+            (['fgts', 'crf', 'cnd_fgts'], ['cnd_fgts', 'cnd fgts', 'fgts'], 0.70),
+            (['falencia', 'concordata', 'certidao de falencia', 'certidao falencia'], ['certidao_falencia', 'certidao falencia', 'falencia concordata'], 0.80),
+            (['civel', 'certidao civel', 'cnd civel'], ['cnd_civel', 'cnd civel', 'civel'], 0.80),
+            (['alvara', 'licença'], ['alvara', 'licenca'], 0.70),
+            (['dispensa sanitaria', 'dispensa_sanitaria'], ['dispensa_sanitaria', 'dispensa sanitaria'], 0.70),
+        ]
+        
+        for req_patterns, doc_patterns, boost in exact_pairs:
+            req_has = any(p == req_name_lower or p in req_name_lower for p in req_patterns)
+            doc_has = any(p in doc_filename_normalized for p in doc_patterns)
+            
+            if req_has and doc_has:
+                score += boost
+                break  # Only apply one boost
+        
+        # PENALTY: Detect obvious mismatches
+        # Strong penalties to prevent cross-matching different document types
+        mismatch_penalties = [
+            (['cnpj'], ['contrato', 'social', 'estatuto', 'ata', 'falencia', 'civel', 'cnd'], -0.9),
+            (['contrato', 'social'], ['cnpj', 'certidao', 'cnd', 'fgts', 'trabalhista', 'falencia', 'civel'], -0.9),
+            (['registro comercial'], ['cnpj', 'certidao', 'cnd', 'fgts', 'trabalhista', 'falencia', 'civel'], -0.9),
+            (['falencia', 'concordata'], ['fgts', 'trabalhista', 'estadual', 'municipal', 'federal', 'cnd_civel', 'civel'], -0.95),
+            (['civel'], ['fgts', 'trabalhista', 'estadual', 'municipal', 'federal', 'falencia_concordata', 'falencia concordata'], -0.95),
+            (['fgts'], ['civel', 'falencia', 'cnpj', 'contrato', 'estadual', 'municipal'], -0.9),
+            (['trabalhista', 'cndt'], ['civel', 'falencia', 'cnpj', 'contrato', 'fgts', 'estadual', 'municipal', 'federal'], -0.9),
+            (['federal'], ['estadual', 'municipal', 'civel', 'falencia', 'fgts', 'trabalhista'], -0.9),
+            (['estadual'], ['federal', 'municipal', 'civel', 'falencia', 'fgts', 'trabalhista'], -0.9),
+            (['municipal'], ['federal', 'estadual', 'civel', 'falencia', 'fgts', 'trabalhista'], -0.9),
+        ]
+        
+        for req_patterns, doc_patterns, penalty in mismatch_penalties:
+            req_has_pattern = any(p in req_name_lower for p in req_patterns)
+            doc_has_pattern = any(p in doc_filename_normalized for p in doc_patterns)
+            
+            if req_has_pattern and doc_has_pattern:
+                logger.debug(f"Mismatch penalty applied: {req_name_lower} vs {doc_filename_normalized}")
+                score += penalty
         
         # Use document's classification confidence
         score *= document.confidence
         
-        return min(score, 1.0)
+        # Ensure score is between 0 and 1
+        final_score = max(0.0, min(score, 1.0))
+        
+        # Log for debugging
+        logger.debug(f"Similarity: '{requirement.name}' <-> '{document.file_name}' = {final_score:.3f}")
+        
+        return final_score
     
     def find_best_match(
         self,
@@ -338,25 +418,50 @@ class RequirementComparator:
         report = ComplianceReport()
         report.statistics['total_documents'] = len(documents)
         
-        # Track matched documents
+        # Track matched documents to avoid duplicates (one doc per requirement)
         matched_document_ids = set()
+        available_documents = documents.copy()
+        
+        # Sort requirements by specificity (more specific first)
+        # This ensures specific requirements get matched before generic ones
+        sorted_requirements = sorted(
+            requirements,
+            key=lambda r: len(r.name.split()) * (2 if r.is_mandatory else 1),
+            reverse=True
+        )
         
         # Match each requirement
-        for requirement in requirements:
-            match_result = self.find_best_match(requirement, documents)
+        for requirement in sorted_requirements:
+            # Filter out already matched documents
+            available_docs = [doc for doc in available_documents if id(doc) not in matched_document_ids]
+            
+            match_result = self.find_best_match(requirement, available_docs)
             
             if match_result:
                 matched_doc, similarity = match_result
-                status = self.determine_match_status(matched_doc, similarity)
                 
-                match = RequirementMatch(
-                    requirement=requirement,
-                    matched_document=matched_doc,
-                    match_confidence=similarity,
-                    status=status
-                )
-                
-                matched_document_ids.add(id(matched_doc))
+                # Additional validation: ensure match makes sense
+                # Reject very low confidence matches
+                if similarity < 0.5:  # Increased threshold for better accuracy
+                    logger.warning(f"Match confidence too low for {requirement.name}: {similarity:.2f}, rejecting match")
+                    match = RequirementMatch(
+                        requirement=requirement,
+                        matched_document=None,
+                        match_confidence=0.0,
+                        status='missing'
+                    )
+                else:
+                    status = self.determine_match_status(matched_doc, similarity)
+                    
+                    match = RequirementMatch(
+                        requirement=requirement,
+                        matched_document=matched_doc,
+                        match_confidence=similarity,
+                        status=status
+                    )
+                    
+                    # Mark document as used
+                    matched_document_ids.add(id(matched_doc))
             else:
                 # No match found
                 match = RequirementMatch(
