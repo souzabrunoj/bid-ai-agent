@@ -21,6 +21,11 @@ from .comparator import (
     compare_requirements,
     ComparatorError
 )
+from .folder_generator import (
+    FolderGenerator,
+    generate_bid_folder,
+    FolderGeneratorError
+)
 
 __all__ = [
     # Edital reader
@@ -39,4 +44,8 @@ __all__ = [
     'ComplianceReport',
     'compare_requirements',
     'ComparatorError',
+    # Folder generator
+    'FolderGenerator',
+    'generate_bid_folder',
+    'FolderGeneratorError',
 ]
