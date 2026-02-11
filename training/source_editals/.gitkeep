@@ -1,0 +1,10 @@
+# Training Source Editals
+
+This folder stores PDF files of editals used for training the extraction model.
+
+When you upload an edital for training through the UI, it will be:
+1. Saved here
+2. Automatically processed to extract requirements
+3. Converted to a training example JSON in training/examples/
+
+The more diverse editals you add, the better the system becomes at recognizing different formats and terminologies.

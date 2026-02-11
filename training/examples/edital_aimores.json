@@ -1,0 +1,26 @@
+{
+  "edital_name": "edital_aimores",
+  "requirements": [
+    {
+      "name": "Contrato Social",
+      "category": "habilitacao_juridica",
+      "description": "Contrato Social da empresa com todas as alterações",
+      "requirements": "nipess oal – SLU ou sociedade identificada como\nempresa individual de responsabilidade limitada - E IRELI: inscrição do ato constitutivo, estatuto\nou contrato social no Registro Público de Empresas Me...",
+      "is_mandatory": true
+    },
+    {
+      "name": "Cnpj",
+      "category": "habilitacao_juridica",
+      "description": "Comprovante de Inscrição e Situação Cadastral no CNPJ",
+      "requirements": "ITURA MUNICIPAL DE AIMORÉS\nAV. Raul Soares, 310 – Telefone: (33) 3267-1000\nE-mail: licitacao@aimores.mg.gov.br\nCEP 35200-000 – Estado de Minas Gerais\nCNPJ: 18.348.094/0001-50\nEDITAL Nº 005/2026\nPROCES...",
+      "is_mandatory": true
+    }
+  ],
+  "metadata": {
+    "extraction_date": "2026-02-11",
+    "extracted_by": "UI Upload",
+    "extraction_method": "rule_based",
+    "source_file": "edital_aimores.pdf",
+    "notes": "Automatically extracted via UI"
+  }
+}

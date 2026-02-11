@@ -377,12 +377,14 @@ class DataProtection:
 
 
 # Convenience functions
-def validate_pdf_file(file_path: Path) -> bool:
+def validate_pdf_file(file_path: Path, allow_project_paths: bool = True) -> bool:
     """
     Validate PDF file (convenience function).
     
     Args:
         file_path: Path to PDF file
+        allow_project_paths: If True, allows paths anywhere in project directory
+                           (input/, training/, documentos/, output/, etc.)
         
     Returns:
         True if valid
@@ -390,7 +392,14 @@ def validate_pdf_file(file_path: Path) -> bool:
     Raises:
         SecurityValidationError: If validation fails
     """
-    validator = FileValidator()
+    # If allowing project paths, use project root as base to allow
+    # training/, documentos/, input/, output/ folders
+    if allow_project_paths:
+        from config.settings import PROJECT_ROOT
+        validator = FileValidator(base_directory=PROJECT_ROOT)
+    else:
+        validator = FileValidator()
+    
     return validator.validate_file(file_path)
 
 
