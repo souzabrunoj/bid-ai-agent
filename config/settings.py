@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.1
     llm_max_tokens: int = 4096
     llm_context_size: int = 8192
+    llm_enabled: bool = True  # Set to False in cloud deployment if model not available
 
     # Document processing
     max_file_size_mb: int = 50

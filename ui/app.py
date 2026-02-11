@@ -73,7 +73,12 @@ def init_session_state():
 
 
 def check_llm_availability() -> bool:
-    """Check if LLM model is available."""
+    """Check if LLM model is available and enabled."""
+    # First check if LLM is enabled in settings
+    if not settings.llm_enabled:
+        return False
+    
+    # Then check if model is actually available
     try:
         llm = get_llm()
         return llm.is_model_loaded()
