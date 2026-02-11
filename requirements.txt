@@ -1,0 +1,30 @@
+# Core dependencies
+python-dotenv==1.0.1
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# PDF processing
+pypdf==4.3.1
+pytesseract==0.3.13
+pillow==10.4.0
+
+# Web interface
+streamlit==1.39.0
+
+# LLM and AI
+langchain==0.3.7
+langchain-community==0.3.5
+llama-cpp-python==0.3.1
+
+# Date and time utilities
+python-dateutil==2.9.0
+
+# Security
+cryptography==43.0.3
+
+# Development tools
+black==24.10.0
+pylint==3.3.1
+mypy==1.13.0
+pytest==8.3.3
+pytest-cov==6.0.0
